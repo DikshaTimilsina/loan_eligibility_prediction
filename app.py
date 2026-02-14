@@ -1,170 +1,147 @@
 import streamlit as st
 import joblib
 import pandas as pd
-import numpy as np
-import warnings
-warnings.filterwarnings('ignore')
 
-# Load the trained model
-@st.cache_resource
-def load_model():
-    with open('rf_model (1).pkl', 'rb') as file:
-        return joblib.load(file)
+# Load the model
+model = joblib.load('rf_model (1).pkl')
 
-model = load_model()
+# Page title
+st.set_page_config(page_title="Loan Eligibility Checker")
+st.title("Loan Eligibility Prediction App")
+st.write("Fill the form below to check if you are eligible for loan")
 
-# Get the feature names the model expects
-expected_features = model.feature_names_in_.tolist() if hasattr(model, 'feature_names_in_') else None
-if expected_features:
-    st.sidebar.write("Model expects these features:", expected_features)
+# Create input fields
+st.subheader("Personal Information")
 
-#title with styling
-st.set_page_config(page_title="Loan Eligibility Predictor", page_icon="💰")
-st.title("💰 Loan Eligibility Prediction App")
-st.markdown("---")
+gender = st.selectbox("Gender", ["Male", "Female"])
+married = st.selectbox("Married", ["Yes", "No"])
+dependents = st.selectbox("Number of Dependents", ["0", "1", "2", "3+"])
+education = st.selectbox("Education", ["Graduate", "Not Graduate"])
+self_employed = st.selectbox("Self Employed", ["Yes", "No"])
 
-#enter details 
-st.write("Please enter the applicant details below to predict loan approval status")
+st.subheader("Loan Information")
 
-# Create two columns for better layout
-col1, col2 = st.columns(2)
+property_area = st.selectbox("Property Area", ["Urban", "Semiurban", "Rural"])
+credit_history = st.selectbox("Credit History", ["Good (1)", "Bad (0)"])
 
-with col1:
-    st.subheader("Personal Information")
-    #Categorical inputs
-    Gender = st.selectbox("Gender", ["Male", "Female"])
-    Married = st.selectbox("Married", ["Yes", "No"])
-    Dependents = st.selectbox("Dependents", ["0", "1", "2", "3+"])
-    Education = st.selectbox("Education", ["Graduate", "Not Graduate"])
-    Self_Employed = st.selectbox("Self Employed", ["Yes", "No"])
+applicant_income = st.number_input("Applicant Income (per month)", min_value=0, value=5000)
+coapplicant_income = st.number_input("Coapplicant Income (per month)", min_value=0, value=0)
+loan_amount = st.number_input("Loan Amount", min_value=0, value=100000)
+loan_term = st.number_input("Loan Term (in years)", min_value=1, max_value=40, value=30)
 
-with col2:
-    st.subheader("Loan Details")
-    Property_Area = st.selectbox("Property Area", ["Urban", "Semiurban", "Rural"])
-    Credit_History = st.selectbox("Credit History", [1.0, 0.0], 
-                                 format_func=lambda x: "Yes" if x == 1.0 else "No")
-    
-    #Numerical inputs
-    Applicant_Income = st.number_input("Applicant Income (₹)", min_value=0, step=1000, value=5000)
-    Coapplicant_Income = st.number_input("Coapplicant Income (₹)", min_value=0, step=1000, value=0)
-    Loan_Amount = st.number_input("Loan Amount (₹)", min_value=0, step=1000, value=100000)
-    
-    # IMPORTANT: Use Years instead of Months to match the model
-    Loan_Term_Years = st.number_input("Loan Term (Years)", min_value=1, max_value=40, value=30)
+# Calculate new features
+total_income = applicant_income + coapplicant_income
+monthly_emi = loan_amount / (loan_term * 12)
+income_to_loan_ratio = total_income / loan_amount
 
-st.markdown("---")
+# Convert text inputs to numbers that model understands
+if gender == "Male":
+    gender_num = 1
+else:
+    gender_num = 0
 
-#feature engineering
-Total_Income = Applicant_Income + Coapplicant_Income
-# Calculate EMI based on Years (convert to months for EMI calculation)
-EMI = Loan_Amount / (Loan_Term_Years * 12) if Loan_Term_Years > 0 else 0
-Income_Loan_Ratio = Total_Income / Loan_Amount if Loan_Amount > 0 else 0
+if married == "Yes":
+    married_num = 1
+else:
+    married_num = 0
 
-# Display calculated features
-with st.expander("View Calculated Features"):
-    col3, col4, col5 = st.columns(3)
-    col3.metric("Total Income", f"₹{Total_Income:,.2f}")
-    col4.metric("Monthly EMI", f"₹{EMI:,.2f}")
-    col5.metric("Income to Loan Ratio", f"{Income_Loan_Ratio:.2f}")
+if dependents == "0":
+    dependents_num = 0
+elif dependents == "1":
+    dependents_num = 1
+elif dependents == "2":
+    dependents_num = 2
+else:
+    dependents_num = 3
 
-#Encode categorical values
-Gender_encoded = 1 if Gender == "Male" else 0
-Married_encoded = 1 if Married == "Yes" else 0
-Education_encoded = 1 if Education == "Graduate" else 0
-Self_Employed_encoded = 1 if Self_Employed == "Yes" else 0
+if education == "Graduate":
+    education_num = 1
+else:
+    education_num = 0
 
-Dependents_map = {"0": 0, "1": 1, "2": 2, "3+": 3}
-Dependents_encoded = Dependents_map[Dependents]
+if self_employed == "Yes":
+    self_employed_num = 1
+else:
+    self_employed_num = 0
 
-Property_Area_map = {"Urban": 2, "Semiurban": 1, "Rural": 0}
-Property_Area_encoded = Property_Area_map[Property_Area]
+if property_area == "Urban":
+    property_area_num = 2
+elif property_area == "Semiurban":
+    property_area_num = 1
+else:
+    property_area_num = 0
 
-#Create Input DataFrame with EXACT column names the model expects
-input_data = pd.DataFrame([[
-    Gender_encoded, Married_encoded, Dependents_encoded, Education_encoded, Self_Employed_encoded,
-    Applicant_Income, Coapplicant_Income, Loan_Amount,
-    Credit_History, Property_Area_encoded,
-    Total_Income, EMI, Income_Loan_Ratio, Loan_Term_Years  # Using Loan_Term_Years here
-]], columns=[
+if credit_history == "Good (1)":
+    credit_history_num = 1
+else:
+    credit_history_num = 0
+
+# Create a single row of data for prediction
+input_features = [[
+    gender_num,
+    married_num,
+    dependents_num,
+    education_num,
+    self_employed_num,
+    applicant_income,
+    coapplicant_income,
+    loan_amount,
+    credit_history_num,
+    property_area_num,
+    total_income,
+    monthly_emi,
+    income_to_loan_ratio,
+    loan_term
+]]
+
+# Define column names
+column_names = [
     "Gender", "Married", "Dependents", "Education", "Self_Employed",
     "Applicant_Income", "Coapplicant_Income", "Loan_Amount",
     "Credit_History", "Property_Area",
-    "Total_Income", "EMI", "Income_Loan_Ratio", "Loan_Term_Years"  # Column name matches model
-])
+    "Total_Income", "EMI", "Income_Loan_Ratio", "Loan_Term_Years"
+]
 
-# Debug: Show the input data shape and columns
-if st.checkbox("Show technical details (for debugging)"):
-    st.write("Input data shape:", input_data.shape)
-    st.write("Input columns:", input_data.columns.tolist())
-    if expected_features:
-        st.write("Model expects:", expected_features)
-        st.write("Columns match:", input_data.columns.tolist() == expected_features)
+# Convert to DataFrame
+input_df = pd.DataFrame(input_features, columns=column_names)
 
-#predict and display result
-if st.button("🔮 Predict Loan Status", type="primary"):
-    try:
-        with st.spinner("Analyzing application..."):
-            prediction = model.predict(input_data)[0]
-            probability = model.predict_proba(input_data)[0][1]
-            
-            # Create a nice layout for results
-            st.markdown("---")
-            st.subheader("Prediction Result")
-            
-            col6, col7 = st.columns(2)
-            
-            with col6:
-                if prediction == 1:
-                    st.success(f"### ✅ LOAN APPROVED")
-                    st.metric("Approval Probability", f"{probability*100:.2f}%")
-                    
-                    # Add confidence indicator
-                    if probability > 0.8:
-                        st.info("📈 High confidence approval")
-                    elif probability > 0.6:
-                        st.info("📊 Moderate confidence approval")
-                    else:
-                        st.warning("📉 Borderline approval")
-                        
-                else:
-                    st.error(f"### ❌ LOAN REJECTED")
-                    st.metric("Approval Probability", f"{probability*100:.2f}%")
-                    
-                    # Add rejection reason hints
-                    rejection_reasons = []
-                    if Credit_History == 0:
-                        rejection_reasons.append("❌ Poor credit history")
-                    if Income_Loan_Ratio < 0.3:
-                        rejection_reasons.append("❌ Low income relative to loan amount")
-                    if Loan_Term_Years > 30:
-                        rejection_reasons.append("❌ Very long loan term")
-                    
-                    if rejection_reasons:
-                        st.warning("Potential reasons:")
-                        for reason in rejection_reasons:
-                            st.write(reason)
-                    else:
-                        st.info("Application doesn't meet all criteria")
-            
-            with col7:
-                # Create a simple gauge for probability
-                st.subheader("Probability Gauge")
-                prob_display = probability * 100
-                st.progress(prob_display/100)
-                st.caption(f"{prob_display:.1f}% chance of approval")
-                
-                # Add threshold indicator
-                if prob_display >= 70:
-                    st.success("✨ Above approval threshold")
-                elif prob_display >= 50:
-                    st.warning("⚖️ Near threshold")
-                else:
-                    st.error("📉 Below approval threshold")
-                    
-    except Exception as e:
-        st.error(f"Error during prediction: {str(e)}")
-        st.info("Please check that all inputs are valid and try again.")
-
-# Add footer with disclaimer
+# Add a predict button
 st.markdown("---")
-st.caption("⚠️ Disclaimer: This is a predictive model-based tool. Final approval depends on bank's verification and policies.")
+predict_button = st.button("Check Loan Eligibility")
+
+# Make prediction when button is clicked
+if predict_button:
+    # Show what was calculated
+    st.write("---")
+    st.subheader("Calculated Values")
+    st.write(f"Total Income: ₹{total_income}")
+    st.write(f"Monthly EMI: ₹{monthly_emi:.2f}")
+    st.write(f"Income to Loan Ratio: {income_to_loan_ratio:.2f}")
+    
+    # Get prediction
+    result = model.predict(input_df)[0]
+    probability = model.predict_proba(input_df)[0]
+    
+    st.write("---")
+    st.subheader("Prediction Result")
+    
+    if result == 1:
+        st.success("✅ Congratulations! Your loan is APPROVED")
+        st.write(f"Approval Probability: {probability[1]*100:.2f}%")
+    else:
+        st.error("❌ Sorry! Your loan is REJECTED")
+        st.write(f"Approval Probability: {probability[1]*100:.2f}%")
+        
+        # Simple explanation for rejection
+        st.write("---")
+        st.write("Possible reasons for rejection:")
+        if credit_history_num == 0:
+            st.write("• Bad credit history")
+        if income_to_loan_ratio < 0.3:
+            st.write("• Income is too low for this loan amount")
+        if loan_term > 30:
+            st.write("• Loan term is too long")
+
+# Add note at bottom
+st.write("---")
+st.write("Note: This is a prediction based on data. Final decision depends on bank's policies.")
